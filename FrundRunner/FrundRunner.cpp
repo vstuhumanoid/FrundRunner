@@ -5,17 +5,20 @@
 #include <process.h>
 #include <iostream>
 #include <winsock2.h>
+#include <string.h>
 #include <Windows.h>
+#include <fstream>
 
 #pragma comment(lib,"ws2_32.lib") //Winsock Library
 
 using namespace std;
 
 #define PORT 55557   //The port on which to listen for incoming data
-#define BUFFLEN 100  //The size of receive buffer
+#define BUFFLEN 200  //The size of receive buffer
 #define CLIENT "127.0.0.1"  //IP address of client
 #define MODELS_PATH "..\\Models\\"
 #define RASHET32 "\\rashet32.exe"
+#define CONTROL_FILE "\\CONTROLFILE.TXT"
 
 SOCKET sock;
 struct sockaddr_in si_addr, si_other;
@@ -28,7 +31,7 @@ bool receive(char *buffer, int size, struct sockaddr_in addr, int *slen);
 int _tmain(int argc, _TCHAR* argv[])
 {
 	STARTUPINFO si;
-	PROCESS_INFORMATION pi1, pi2;
+	PROCESS_INFORMATION pi;
 
 	char buffer[BUFFLEN];
 	memset(buffer, 0, BUFFLEN);
@@ -41,50 +44,55 @@ int _tmain(int argc, _TCHAR* argv[])
 	while (true)
 	{
 		//Receive command
-		if (receive(buffer, 5, si_other, &slen))
+		if (receive(buffer, 10, si_other, &slen))
+		{
 			printf("Received command: %s\n", buffer);
-		else
-			printf("Received not enough data!\n");
 
-		if (buffer[0] == '1')
-		{
-			if (!CreateProcess(MODELS_PATH"sinhron1"RASHET32, MODELS_PATH"sinhron1"RASHET32, NULL, NULL, FALSE, CREATE_NEW_CONSOLE, NULL, MODELS_PATH"sinhron1", &si, &pi1))
-				cout << "CreateProcess error " << GetLastError() << endl;
+			if (buffer[0] == '1')	// run model
+			{
+				if (receive(buffer, 20, si_other, &slen))
+				{
+					printf("Model name received: %s\n", buffer);
 
-			cout << "Frund 1 must be started" << endl;
-		}
-		else if (buffer[0] == '2')
-		{
-			if (!CreateProcess(MODELS_PATH"sinhron2"RASHET32, MODELS_PATH"sinhron2"RASHET32, NULL, NULL, FALSE, CREATE_NEW_CONSOLE, NULL, MODELS_PATH"sinhron2", &si, &pi1))
-				cout << "CreateProcess error " << GetLastError() << endl;
+					char model[50] = { 0 }, model_exe[100] = { 0 };
+					strcat(strcat(model, MODELS_PATH), buffer);
+					strcat(strcat(model_exe, model), RASHET32);
 
-			cout << "Frund 2 must be started" << endl;
+					if (!CreateProcess(model_exe, model_exe, NULL, NULL, FALSE, CREATE_NEW_CONSOLE, NULL, model, &si, &pi))
+						cout << "CreateProcess error " << GetLastError() << endl;
+				}
+			}
+			else if (buffer[0] == '2')	// stop model
+			{
+				if (!TerminateProcess(pi.hProcess, 0))
+					cout << "TerminateProcess error " << GetLastError() << endl;
+			}
+			else if (buffer[0] == '3')	// write params
+			{
+				if (receive(buffer, 20, si_other, &slen))
+				{
+					printf("Model name received: %s\n", buffer);
+
+					char model[50] = { 0 }, model_params[100] = { 0 };
+					strcat(strcat(model, MODELS_PATH), buffer);
+					strcat(strcat(model_params, model), CONTROL_FILE);
+
+					if (receive(buffer, 100, si_other, &slen))
+					{
+						//write to file
+						ofstream file;
+						file.open(model_params, ios_base::out);
+						if (!file.is_open())
+							printf("Open file error!\n");
+						else
+							file << buffer;
+						file.close();
+					}
+				}
+
+			}
 		}
 	}
-	
-	cout << "Trying to run frund..." << endl;
-	
-
-	//if (_spawnlp(P_NOWAIT, "D:\\__Share\\sinhron\\rashet32.exe", "D:\\__Share\\sinhron\\rashet32.exe", NULL) == -1)
-	//	cout << "Spawn error" << endl;
-
-	if (!CreateProcess("..\\Models\\sinhron1\\rashet32.exe", "..\\Models\\sinhron1\\rashet32.exe", NULL, NULL, FALSE, CREATE_NEW_CONSOLE, NULL, "..\\Models\\sinhron1", &si, &pi1))
-		cout << "CreateProcess error " << GetLastError() << endl;
-
-	cout << "Frund 1 must be started" << endl;
-
-	if (!CreateProcess("..\\Models\\sinhron2\\rashet32.exe", "..\\Models\\sinhron2\\rashet32.exe", NULL, NULL, FALSE, CREATE_NEW_CONSOLE, NULL, "..\\Models\\sinhron2", &si, &pi2))
-		cout << "CreateProcess error " << GetLastError() << endl;
-
-	cout << "Frund 2 must be started" << endl;
-
-	Sleep(5000);
-	if (!TerminateProcess(pi1.hProcess, 0))
-		cout << "TerminateProcess error " << GetLastError() << endl;
-	if (!TerminateProcess(pi2.hProcess, 0))
-		cout << "TerminateProcess error " << GetLastError() << endl;
-
-	cout << "Frund must be killed" << endl;
 
 	closeSocket();
 
@@ -142,8 +150,6 @@ bool receive(char *buffer, int size, struct sockaddr_in addr, int *slen)
 {
 	if (recvfrom(sock, buffer, size, 0, (struct sockaddr*)&addr, &*slen) != SOCKET_ERROR)
 	{
-		if (*slen > size)
-			return false;
 		return true;
 	}
 	else
