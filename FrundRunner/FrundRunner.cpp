@@ -26,7 +26,8 @@ WSADATA wsa;
 
 void initSocket();
 void closeSocket();
-bool receive(char *buffer, int size, struct sockaddr_in addr, int *slen);
+bool receive(char *buffer, int size, struct sockaddr_in *addr, int *slen);
+bool send(char *buffer, int size, struct sockaddr_in *addr, int slen);
 
 int _tmain(int argc, _TCHAR* argv[])
 {
@@ -44,13 +45,13 @@ int _tmain(int argc, _TCHAR* argv[])
 	while (true)
 	{
 		//Receive command
-		if (receive(buffer, 10, si_other, &slen))
+		if (receive(buffer, 10, &si_other, &slen))
 		{
 			printf("Received command: %s\n", buffer);
 
 			if (buffer[0] == '1')	// run model
 			{
-				if (receive(buffer, 20, si_other, &slen))
+				if (receive(buffer, 20, &si_other, &slen))
 				{
 					printf("Model name received: %s\n", buffer);
 
@@ -59,17 +60,31 @@ int _tmain(int argc, _TCHAR* argv[])
 					strcat(strcat(model_exe, model), RASHET32);
 
 					if (!CreateProcess(model_exe, model_exe, NULL, NULL, FALSE, CREATE_NEW_CONSOLE, NULL, model, &si, &pi))
+					{
 						cout << "CreateProcess error " << GetLastError() << endl;
+						buffer[0] = '2';
+					}
+					else
+						buffer[0] = '1';
+					buffer[1] = 0;
+					send(buffer, 2, &si_other, slen);
 				}
 			}
 			else if (buffer[0] == '2')	// stop model
 			{
 				if (!TerminateProcess(pi.hProcess, 0))
+				{
 					cout << "TerminateProcess error " << GetLastError() << endl;
+					buffer[0] = '2';
+				}
+				else
+					buffer[0] = '1';
+				buffer[1] = 0;
+				send(buffer, 2, &si_other, slen);
 			}
 			else if (buffer[0] == '3')	// write params
 			{
-				if (receive(buffer, 20, si_other, &slen))
+				if (receive(buffer, 20, &si_other, &slen))
 				{
 					printf("Model name received: %s\n", buffer);
 
@@ -77,19 +92,26 @@ int _tmain(int argc, _TCHAR* argv[])
 					strcat(strcat(model, MODELS_PATH), buffer);
 					strcat(strcat(model_params, model), CONTROL_FILE);
 
-					if (receive(buffer, 100, si_other, &slen))
+					if (receive(buffer, 100, &si_other, &slen))
 					{
 						//write to file
 						ofstream file;
 						file.open(model_params, ios_base::out);
 						if (!file.is_open())
+						{
 							printf("Open file error!\n");
+							buffer[0] = '2';
+						}
 						else
+						{
 							file << buffer;
+							buffer[0] = '1';
+						}
 						file.close();
+						buffer[1] = '0';
+						send(buffer, 2, &si_other, slen);
 					}
 				}
-
 			}
 		}
 	}
@@ -146,18 +168,23 @@ void closeSocket()
 	printf("Socket is closed.\n");
 }
 
-bool receive(char *buffer, int size, struct sockaddr_in addr, int *slen)
+bool receive(char *buffer, int size, struct sockaddr_in *addr, int *slen)
 {
-	if (recvfrom(sock, buffer, size, 0, (struct sockaddr*)&addr, &*slen) != SOCKET_ERROR)
-	{
+	if (recvfrom(sock, buffer, size, 0, (struct sockaddr*)addr, &*slen) != SOCKET_ERROR)
 		return true;
-	}
-	else
-	{
-		printf("recvfrom() failed with error code : %d\n", WSAGetLastError());
-		//closeSocket();
-		//exit(EXIT_FAILURE);
-		return false;
-	}
+	printf("recvfrom() failed with error code : %d\n", WSAGetLastError());
+	//closeSocket();
+	//exit(EXIT_FAILURE);
+	return false;
+}
+
+bool send(char *buffer, int size, struct sockaddr_in *addr, int slen)
+{
+	if (sendto(sock, buffer, size, 0, (struct sockaddr*)addr, slen) != SOCKET_ERROR)
+		return true;
+	printf("sendto() failed with error code : %d\n", WSAGetLastError());
+	//closeSocket();
+	//exit(EXIT_FAILURE);
+	return false;
 }
 
