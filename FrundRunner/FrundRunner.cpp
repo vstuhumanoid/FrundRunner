@@ -14,7 +14,7 @@
 using namespace std;
 
 #define PORT 55557   //The port on which to listen for incoming data
-#define BUFFLEN 200  //The size of receive buffer
+#define BUFFLEN 3  //The size of receive buffer
 #define CLIENT "127.0.0.1"  //IP address of client
 #define MODELS_PATH "..\\Models\\"
 #define RASHET32 "\\rashet32.exe"
@@ -35,7 +35,11 @@ int _tmain(int argc, _TCHAR* argv[])
 	PROCESS_INFORMATION pi;
 
 	char buffer[BUFFLEN];
+	char model_buffer[20];
+	char params_buffer[150];
 	memset(buffer, 0, BUFFLEN);
+	memset(model_buffer, 0, 20);
+	memset(params_buffer, 0, 150);
 	int slen = sizeof(si_other);
 
 	GetStartupInfo(&si);
@@ -51,12 +55,13 @@ int _tmain(int argc, _TCHAR* argv[])
 
 			if (buffer[0] == '1')	// run model
 			{
-				if (receive(buffer, 20, &si_other, &slen))
+				if (receive(model_buffer, 20, &si_other, &slen))
 				{
-					printf("Model name received: %s\n", buffer);
+					printf("Model name received: %s\n", model_buffer);
+
 
 					char model[50] = { 0 }, model_exe[100] = { 0 };
-					strcat(strcat(model, MODELS_PATH), buffer);
+					strcat(strcat(model, MODELS_PATH), model_buffer);
 					strcat(strcat(model_exe, model), RASHET32);
 
 					if (!CreateProcess(model_exe, model_exe, NULL, NULL, FALSE, CREATE_NEW_CONSOLE, NULL, model, &si, &pi))
@@ -69,6 +74,8 @@ int _tmain(int argc, _TCHAR* argv[])
 					buffer[1] = 0;
 					send(buffer, 2, &si_other, slen);
 				}
+
+				memset(model_buffer, 0, 20);
 			}
 			else if (buffer[0] == '2')	// stop model
 			{
@@ -84,15 +91,15 @@ int _tmain(int argc, _TCHAR* argv[])
 			}
 			else if (buffer[0] == '3')	// write params
 			{
-				if (receive(buffer, 20, &si_other, &slen))
+				if (receive(model_buffer, 20, &si_other, &slen))
 				{
-					printf("Model name received: %s\n", buffer);
+					printf("Model name received: %s\n", model_buffer);
 
 					char model[50] = { 0 }, model_params[100] = { 0 };
-					strcat(strcat(model, MODELS_PATH), buffer);
+					strcat(strcat(model, MODELS_PATH), model_buffer);
 					strcat(strcat(model_params, model), CONTROL_FILE);
 
-					if (receive(buffer, 100, &si_other, &slen))
+					if (receive(params_buffer, 100, &si_other, &slen))
 					{
 						//write to file
 						ofstream file;
@@ -104,15 +111,21 @@ int _tmain(int argc, _TCHAR* argv[])
 						}
 						else
 						{
-							file << buffer;
+							file << params_buffer;
 							buffer[0] = '1';
 						}
 						file.close();
 						buffer[1] = '0';
 						send(buffer, 2, &si_other, slen);
 					}
+
+					memset(params_buffer, 0, 150);
 				}
+
+				memset(model_buffer, 0, 20);
 			}
+
+			memset(buffer, 0, BUFFLEN);
 		}
 	}
 
